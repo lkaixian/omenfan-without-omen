@@ -1,0 +1,3 @@
+# must sort before 73-seat-late.rules, which turns the uaccess tag into an ACL
+# uaccess: the logged-in desktop user gets access, so the GUI needs no root
+KERNEL=="victusfan", SUBSYSTEM=="misc", TAG+="uaccess"

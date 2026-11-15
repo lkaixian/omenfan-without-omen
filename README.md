@@ -27,6 +27,10 @@ It is a GUI exe; pipe to see output: `.\VictusFan.exe status | Out-Host`.
 
 The fan curve lives in `curve.txt` next to the exe (`temp_C rpm` per line, linear interpolation).
 
+## Linux
+
+Ubuntu port with tray, curve editor and autostart: see [linux/](linux/).
+
 ## Build
 
 Windows only, no SDK needed. Uses the C# compiler that ships with Windows:

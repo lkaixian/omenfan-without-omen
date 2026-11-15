@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=VictusFan
+Comment=Fan control for HP Victus / Omen
+Exec=/usr/bin/python3 /usr/local/lib/victusfan/victusfan_gui.py
+Icon=victusfan
+Categories=System;Settings;
+StartupWMClass=victusfan
