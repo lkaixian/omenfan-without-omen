@@ -15,11 +15,11 @@ using Microsoft.Win32;
 [assembly: AssemblyTitle("VictusFan")]
 [assembly: AssemblyProduct("VictusFan")]
 [assembly: AssemblyCompany("lkaixian")]
-[assembly: AssemblyVersion("0.2.1.0")]
-[assembly: AssemblyFileVersion("0.2.1.0")]
+[assembly: AssemblyVersion("0.2.2.0")]
+[assembly: AssemblyFileVersion("0.2.2.0")]
 
 static class App {
-    public const string Version = "0.2.1";
+    public const string Version = "0.2.2";
     public const string RepoUrl = "https://github.com/lkaixian/omenfan-without-omen";
 }
 
@@ -460,12 +460,26 @@ static class Program {
     public static int Temp, F1, F2;
     static List<int> hist = new List<int>();
 
+    static bool IsAdmin() { return new System.Security.Principal.WindowsPrincipal(System.Security.Principal.WindowsIdentity.GetCurrent()).IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator); }
+
+    // Not elevated: at logon (--autostart) fire the elevated task (no UAC prompt); otherwise re-launch ourselves via UAC.
+    static int Elevate(string[] a) {
+        try {
+            if (a.Length > 0 && a[0] == "--autostart") Process.Start(new ProcessStartInfo(SchExe, "/run /tn VictusFan") { CreateNoWindow = true, UseShellExecute = false });
+            else Process.Start(new ProcessStartInfo(Process.GetCurrentProcess().MainModule.FileName, string.Join(" ", a)) { Verb = "runas", UseShellExecute = true });
+        } catch (System.ComponentModel.Win32Exception) { } // UAC prompt declined
+        return 0;
+    }
+
     [STAThread] static int Main(string[] a) {
+        if (!IsAdmin()) return Elevate(a);
+        if (a.Length > 0 && a[0] == "--autostart") a = new[] { "--tray" }; // already elevated (e.g. admin shell)
         if (a.Length > 0 && a[0] != "--tray") return Cli(a);
         bool first;
         using (var m = new Mutex(true, "VictusFan.single", out first)) {
             if (!first) return 0;
             Curve = new Curve(CurvePath); LoadCfg();
+            Safe(MigrateStartup);
             Application.EnableVisualStyles();
             Th.Set(Dark);
             var f = new MainForm();
@@ -530,8 +544,8 @@ static class Program {
         var p = Process.Start(new ProcessStartInfo("schtasks", args) { CreateNoWindow = true, UseShellExecute = false });
         p.WaitForExit(); return p.ExitCode;
     }
-    // Startup = a Run-key entry (so it shows in Task Manager > Startup apps and can be toggled there) that fires an
-    // on-demand elevated task. Windows won't autostart an admin-only exe straight from Run, hence the task.
+    // Startup = a Run-key entry (so it shows in Task Manager > Startup apps and can be toggled there) running
+    // "VictusFan.exe --autostart", which (not elevated) fires an on-demand elevated task. See Elevate().
     const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run", ApprovedKey = @"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
     static readonly string SchExe = Path.Combine(Environment.SystemDirectory, "schtasks.exe");
 
@@ -545,6 +559,14 @@ static class Program {
             return true;
         } catch { return false; }
     }
+    // 0.2.1 pointed the Run entry at a separate launcher exe; rewrite it to the single-exe form.
+    static void MigrateStartup() {
+        using (var k = Registry.CurrentUser.OpenSubKey(RunKey)) {
+            var v = k == null ? null : k.GetValue("VictusFan") as string;
+            if (v != null && v.IndexOf("--autostart") < 0) StartupSet(true);
+        }
+    }
+
     // Returns an error message, or null on success.
     public static string StartupSet(bool on) {
         try {
@@ -564,8 +586,7 @@ static class Program {
             File.WriteAllText(tmp, xml, System.Text.Encoding.Unicode);
             int rc = Sch("/Create /F /TN VictusFan /XML \"" + tmp + "\""); File.Delete(tmp);
             if (rc != 0) return "schtasks failed (exit code " + rc + ")";
-            var launcher = Path.Combine(Dir, "VictusFanStart.exe"); // named "VictusFan" in Task Manager; falls back to schtasks itself
-            using (var k = Registry.CurrentUser.CreateSubKey(RunKey)) k.SetValue("VictusFan", File.Exists(launcher) ? "\"" + launcher + "\"" : "\"" + SchExe + "\" /run /tn VictusFan");
+            using (var k = Registry.CurrentUser.CreateSubKey(RunKey)) k.SetValue("VictusFan", "\"" + exe + "\" --autostart");
             using (var k = Registry.CurrentUser.OpenSubKey(ApprovedKey, true)) if (k != null) k.DeleteValue("VictusFan", false); // clear any old "disabled" flag
             return null;
         } catch (Exception e) { return e.Message; }

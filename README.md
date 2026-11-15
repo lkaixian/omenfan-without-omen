@@ -12,17 +12,18 @@ It calls the same BIOS WMI interface (`root\wmi`, `hpqBIntM.hpqBIOSInt128`) that
 
 ## Use
 
-1. Build (see below) or grab both exes from the [Releases](../../releases) page. Keep them in the same folder.
-2. Run `VictusFan.exe`. It asks for admin rights; the BIOS calls need them.
+1. Build (see below) or grab `VictusFan.exe` from the [Releases](../../releases) page.
+2. Run it. It asks for admin rights (UAC); the BIOS calls need them.
 3. Pick a mode. Close the window to keep it running in the tray.
    **Settings > Start with Windows** (also in the tray menu) adds a startup entry that shows up in Task Manager > Startup apps.
-   It starts hidden in the tray with no UAC prompt, also on battery. This needs `VictusFanStart.exe` next to `VictusFan.exe`:
-   Windows won't autostart an admin-only exe directly, so the launcher fires an elevated scheduled task instead.
+   It starts hidden in the tray with no UAC prompt, also on battery: the entry runs `VictusFan.exe --autostart`, which fires an
+   elevated scheduled task. (Windows won't autostart an admin-only exe directly, so the exe starts un-elevated and re-launches itself.)
 
 The BIOS drops manual fan settings after ~2 minutes, so the app must keep running for the curve to stay applied.
 
 CLI: `VictusFan.exe status | probe | set <rpm> | max [off] | auto`
-(it is a GUI exe; pipe to see output: `.\VictusFan.exe status | Out-Host`).
+Run it from an **admin** terminal (otherwise it re-launches via UAC and the output is lost).
+It is a GUI exe; pipe to see output: `.\VictusFan.exe status | Out-Host`.
 
 The fan curve lives in `curve.txt` next to the exe (`temp_C rpm` per line, linear interpolation).
 
