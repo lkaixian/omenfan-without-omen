@@ -1,0 +1,5 @@
+*.exe
+fan.ico
+# per-user state, created by the app
+curve.txt
+settings.txt
