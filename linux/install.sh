@@ -4,10 +4,10 @@ set -e
 [ "$EUID" = 0 ] || { echo "run with sudo"; exit 1; }
 cd "$(dirname "$0")"
 apt-get install -y dkms gir1.2-ayatanaappindicator3-0.1 python3-gi python3-gi-cairo gir1.2-gtk-3.0
-rm -rf /usr/src/victusfan-1.0; mkdir /usr/src/victusfan-1.0
-cp victusfan_wmi.c Makefile dkms.conf /usr/src/victusfan-1.0/
-dkms remove victusfan/1.0 --all 2>/dev/null || true
-dkms add victusfan/1.0; dkms build victusfan/1.0; dkms install victusfan/1.0 --force
+rm -rf /usr/src/victusfan-0.1.0; mkdir /usr/src/victusfan-0.1.0
+cp victusfan_wmi.c Makefile dkms.conf /usr/src/victusfan-0.1.0/
+dkms remove victusfan/0.1.0 --all 2>/dev/null || true
+dkms add victusfan/0.1.0; dkms build victusfan/0.1.0; dkms install victusfan/0.1.0 --force
 echo victusfan_wmi > /etc/modules-load.d/victusfan.conf
 rm -f /etc/udev/rules.d/99-victusfan.rules; cp 70-victusfan.rules /etc/udev/rules.d/; udevadm control --reload
 mkdir -p /usr/local/lib/victusfan

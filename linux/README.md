@@ -9,6 +9,12 @@ the "user-defined trigger" call (command 0x10) comes first, which `victusfan.py`
 
 ## Install (Ubuntu, GNOME)
 
+Easiest: download `victusfan_0.1.0_all.deb` from the [Linux release](../../../releases/tag/linux-v0.1.0), then
+
+    sudo apt install ./victusfan_0.1.0_all.deb
+
+(`apt remove victusfan` uninstalls it; `./build-deb.sh` rebuilds the package from source.) Or from source:
+
     cd linux && sudo ./install.sh
 
 Installs the module through DKMS (rebuilt and signed on kernel updates, using the Secure Boot MOK key DKMS already
