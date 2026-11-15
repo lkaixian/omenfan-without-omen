@@ -12,10 +12,12 @@ It calls the same BIOS WMI interface (`root\wmi`, `hpqBIntM.hpqBIOSInt128`) that
 
 ## Use
 
-1. Build (see below) or grab `VictusFan.exe`.
-2. Run it. It asks for admin rights; the BIOS calls need them.
+1. Build (see below) or grab both exes from the [Releases](../../releases) page. Keep them in the same folder.
+2. Run `VictusFan.exe`. It asks for admin rights; the BIOS calls need them.
 3. Pick a mode. Close the window to keep it running in the tray.
-   **Settings > Start with Windows** adds a logon task (starts hidden in the tray, no UAC prompt).
+   **Settings > Start with Windows** (also in the tray menu) adds a startup entry that shows up in Task Manager > Startup apps.
+   It starts hidden in the tray with no UAC prompt, also on battery. This needs `VictusFanStart.exe` next to `VictusFan.exe`:
+   Windows won't autostart an admin-only exe directly, so the launcher fires an elevated scheduled task instead.
 
 The BIOS drops manual fan settings after ~2 minutes, so the app must keep running for the curve to stay applied.
 

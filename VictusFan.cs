@@ -9,10 +9,17 @@ using System.Management;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
+using System.Reflection;
 using Microsoft.Win32;
 
+[assembly: AssemblyTitle("VictusFan")]
+[assembly: AssemblyProduct("VictusFan")]
+[assembly: AssemblyCompany("lkaixian")]
+[assembly: AssemblyVersion("0.2.1.0")]
+[assembly: AssemblyFileVersion("0.2.1.0")]
+
 static class App {
-    public const string Version = "0.2.0";
+    public const string Version = "0.2.1";
     public const string RepoUrl = "https://github.com/lkaixian/omenfan-without-omen";
 }
 
@@ -287,13 +294,13 @@ class MainForm : Form {
     Label lblModel, lblInfo, lblDesc, lblStatus, lblHint;
     Card cTemp, cF1, cF2; Seg seg; CurveBox box; Panel content;
     MenuStrip menu; NotifyIcon tray; ContextMenuStrip trayMenu;
-    ToolStripMenuItem miDark, miStart, trayAuto, trayCurve, trayMax, trayHdr;
+    ToolStripMenuItem miDark, miStart, trayAuto, trayCurve, trayMax, trayHdr, trayStart;
     List<ToolStripMenuItem> miInt = new List<ToolStripMenuItem>();
     System.Windows.Forms.Timer timer;
     static readonly string[] Modes = { "auto", "curve", "max" };
 
     public MainForm() {
-        Text = "VictusFan"; Icon = FanIcon.ToIcon(32);
+        Text = "VictusFan " + App.Version; Icon = FanIcon.ToIcon(32);
         ClientSize = new Size(696, 584); FormBorderStyle = FormBorderStyle.FixedSingle; MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen; Font = new Font("Segoe UI", 9f);
 
@@ -337,7 +344,7 @@ class MainForm : Form {
         view.DropDownItems.Add(miDark);
 
         var set = new ToolStripMenuItem("&Settings");
-        miStart = MI("Start with &Windows", (s, e) => { Program.StartupSet(!Program.StartupOn()); miStart.Checked = Program.StartupOn(); }, Keys.None);
+        miStart = MI("Start with &Windows", (s, e) => ToggleStartup(), Keys.None);
         set.DropDownItems.Add(miStart);
         var iv = new ToolStripMenuItem("&Update interval");
         foreach (int sec in new[] { 1, 2, 5 }) {
@@ -365,10 +372,18 @@ class MainForm : Form {
         trayAuto = MI("Auto (BIOS)", (s, e) => SetMode("auto"), Keys.None);
         trayCurve = MI("Fan curve", (s, e) => SetMode("curve"), Keys.None);
         trayMax = MI("Max fan", (s, e) => SetMode("max"), Keys.None);
+        trayStart = MI("Start with Windows", (s, e) => ToggleStartup(), Keys.None);
         trayMenu.Items.AddRange(new ToolStripItem[] { trayHdr, new ToolStripSeparator(), trayAuto, trayCurve, trayMax, new ToolStripSeparator(),
-            MI("Open VictusFan", (s, e) => ShowMe(), Keys.None), MI("Exit", (s, e) => Quit(), Keys.None) });
+            trayStart, new ToolStripSeparator(), MI("Open VictusFan", (s, e) => ShowMe(), Keys.None), MI("Exit", (s, e) => Quit(), Keys.None) });
+        trayMenu.Opening += (s, e) => trayStart.Checked = Program.StartupOn(); // Task Manager can change it behind our back
         tray = new NotifyIcon { Icon = Icon, Visible = true, Text = "VictusFan", ContextMenuStrip = trayMenu };
         tray.MouseClick += (s, e) => { if (e.Button == MouseButtons.Left) ShowMe(); };
+    }
+
+    void ToggleStartup() {
+        string err = Program.StartupSet(!Program.StartupOn());
+        if (err != null) MessageBox.Show("Could not change startup setting:\n" + err, "VictusFan", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        miStart.Checked = trayStart.Checked = Program.StartupOn();
     }
 
     void Quit() { Program.Stop = true; tray.Visible = false; Program.Safe(Bios.Release); Application.Exit(); }
@@ -415,7 +430,7 @@ class MainForm : Form {
         foreach (Control c in content.Controls) if (c is Label) c.ForeColor = Th.Sub;
         lblModel.ForeColor = Th.Fg; lblDesc.ForeColor = Th.Fg;
         Th.Menu(menu); Th.Menu(trayMenu);
-        miDark.Checked = Program.Dark; miStart.Checked = Program.StartupOn(); CheckInterval();
+        miDark.Checked = Program.Dark; miStart.Checked = trayStart.Checked = Program.StartupOn(); CheckInterval();
         Th.TitleBar(this);
         foreach (Control c in content.Controls) c.Invalidate();
     }
@@ -515,11 +530,45 @@ static class Program {
         var p = Process.Start(new ProcessStartInfo("schtasks", args) { CreateNoWindow = true, UseShellExecute = false });
         p.WaitForExit(); return p.ExitCode;
     }
-    public static bool StartupOn() { return Sch("/Query /TN VictusFan") == 0; }
-    public static void StartupSet(bool on) {
-        if (!on) { Sch("/Delete /F /TN VictusFan"); return; }
-        var exe = Process.GetCurrentProcess().MainModule.FileName;
-        Sch("/Create /F /SC ONLOGON /RL HIGHEST /TN VictusFan /TR \"\\\"" + exe + "\\\" --tray\"");
+    // Startup = a Run-key entry (so it shows in Task Manager > Startup apps and can be toggled there) that fires an
+    // on-demand elevated task. Windows won't autostart an admin-only exe straight from Run, hence the task.
+    const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run", ApprovedKey = @"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
+    static readonly string SchExe = Path.Combine(Environment.SystemDirectory, "schtasks.exe");
+
+    public static bool StartupOn() {
+        try {
+            using (var k = Registry.CurrentUser.OpenSubKey(RunKey)) if (k == null || k.GetValue("VictusFan") == null) return false;
+            using (var k = Registry.CurrentUser.OpenSubKey(ApprovedKey)) { // Task Manager's Disable flips the low bit of the first byte
+                var v = k == null ? null : k.GetValue("VictusFan") as byte[];
+                if (v != null && v.Length > 0 && (v[0] & 1) == 1) return false;
+            }
+            return true;
+        } catch { return false; }
+    }
+    // Returns an error message, or null on success.
+    public static string StartupSet(bool on) {
+        try {
+            if (!on) {
+                Sch("/Delete /F /TN VictusFan");
+                using (var k = Registry.CurrentUser.OpenSubKey(RunKey, true)) if (k != null) k.DeleteValue("VictusFan", false);
+                using (var k = Registry.CurrentUser.OpenSubKey(ApprovedKey, true)) if (k != null) k.DeleteValue("VictusFan", false);
+                return null;
+            }
+            var exe = Process.GetCurrentProcess().MainModule.FileName;
+            var xml = "<?xml version=\"1.0\" encoding=\"UTF-16\"?><Task version=\"1.2\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">"
+                + "<Principals><Principal id=\"A\"><LogonType>InteractiveToken</LogonType><RunLevel>HighestAvailable</RunLevel></Principal></Principals>"
+                + "<Settings><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>"
+                + "<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries><ExecutionTimeLimit>PT0S</ExecutionTimeLimit><AllowStartOnDemand>true</AllowStartOnDemand></Settings>"
+                + "<Actions Context=\"A\"><Exec><Command>" + System.Security.SecurityElement.Escape(exe) + "</Command><Arguments>--tray</Arguments></Exec></Actions></Task>";
+            var tmp = Path.Combine(Path.GetTempPath(), "victusfan-task.xml");
+            File.WriteAllText(tmp, xml, System.Text.Encoding.Unicode);
+            int rc = Sch("/Create /F /TN VictusFan /XML \"" + tmp + "\""); File.Delete(tmp);
+            if (rc != 0) return "schtasks failed (exit code " + rc + ")";
+            var launcher = Path.Combine(Dir, "VictusFanStart.exe"); // named "VictusFan" in Task Manager; falls back to schtasks itself
+            using (var k = Registry.CurrentUser.CreateSubKey(RunKey)) k.SetValue("VictusFan", File.Exists(launcher) ? "\"" + launcher + "\"" : "\"" + SchExe + "\" /run /tn VictusFan");
+            using (var k = Registry.CurrentUser.OpenSubKey(ApprovedKey, true)) if (k != null) k.DeleteValue("VictusFan", false); // clear any old "disabled" flag
+            return null;
+        } catch (Exception e) { return e.Message; }
     }
 
     [DllImport("kernel32.dll")] static extern bool AttachConsole(int pid);
